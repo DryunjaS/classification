@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./style/bootstrap.min.css">
+    <link rel="stylesheet" href="./style/style.css">
+    <title>Классификатор</title>
+</head>
+
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1 class="title">Классификатор изображений и видео</h1>
+            <div class="user-input">
+                <button type="button" class="btn btn-primary" onclick="initWebcam()">Запустить веб-камеру</button>
+
+                <div class="input-group ">
+                    <label class="input-group-text" for="inputGroupFile01">Изображение</label>
+                    <input class="form-control" type="file" accept="image/*" onchange="loadImage(event)">
+                </div>
+                <div class="input-group ">
+                    <label class="input-group-text" for="inputGroupFile01">Видео</label>
+                    <input class="form-control" type="file" accept="video/*" onchange="loadVideo(event)">
+                </div>
+            </div>
+        </div>
+        <div class="main">
+            <div id="webcam-container"></div>
+
+        </div>
+        <div class="footer">
+            <div class="result-container">
+                Я
+                <div id="progress-bar-1" class="progress" role="progressbar" label="Example with label"
+                    aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar bg-success" style="width: 0%">0%</div>
+                </div>
+
+                Мой телефон
+                <div id="progress-bar-2" class="progress" role="progressbar" aria-label="Example with label"
+                    aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar bg-info" style="width: 0%">0%</div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+
+    <script src="./script/tf.min.js"></script>
+    <script src="./script/teachablemachine-image.min.js"></script>
+    <script src="./script/bootstrap.bundle.min.js"></script>
+    <script type="text/javascript">
+        const URL = "./model/";
+
+        let model, webcam, maxPredictions, uploadedImage, uploadedVideo, videoElement;
+
+        // Загрузка модели изображения и настройка веб-камеры
+        async function initModel() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+        }
+
+        async function initWebcam() {
+            await initModel();
+
+            const flip = true; // переворачивать ли веб-камеру
+            webcam = new tmImage.Webcam(200, 200, flip); // ширина, высота, переворот
+            await webcam.setup(); // запрос доступа к веб-камере
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            document.getElementById("webcam-container").innerHTML = '';
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            uploadedImage = null;
+            uploadedVideo = null;
+        }
+
+        async function loop() {
+            if (!uploadedImage && !uploadedVideo) {
+                webcam.update(); // обновление кадра веб-камеры
+                await predict(webcam.canvas);
+                window.requestAnimationFrame(loop);
+            } else if (uploadedVideo) {
+                await predict(videoElement);
+                window.requestAnimationFrame(loop);
+            }
+        }
+
+        // Загрузка и отображение изображения
+        function loadImage(event) {
+            const reader = new FileReader();
+            reader.onload = function () {
+                const img = new Image();
+                img.src = reader.result;
+                img.onload = async function () {
+                    uploadedImage = img;
+                    uploadedVideo = null;
+                    document.getElementById("webcam-container").innerHTML = '';
+                    document.getElementById("webcam-container").appendChild(img);
+                    await initModel();
+                    await predict(img);
+                }
+            }
+            reader.readAsDataURL(event.target.files[0]);
+        }
+
+        // Загрузка и отображение видео
+        function loadVideo(event) {
+            const file = event.target.files[0];
+            const url = window.URL.createObjectURL(file);
+            videoElement = document.createElement("video");
+            videoElement.src = url;
+            videoElement.width = 200;
+            videoElement.height = 200;
+            videoElement.autoplay = true;
+            videoElement.loop = true;
+            videoElement.onloadeddata = async function () {
+                uploadedVideo = true;
+                uploadedImage = null;
+                document.getElementById("webcam-container").innerHTML = '';
+                document.getElementById("webcam-container").appendChild(videoElement);
+                await initModel();
+                await predict(videoElement);
+                window.requestAnimationFrame(loop);
+            }
+        }
+
+        // Предсказание для изображения, видео или видео с веб-камеры
+        async function predict(imageOrVideo) {
+            const prediction = await model.predict(imageOrVideo);
+
+            // Получаем элементы progress-bar
+            const progressBar1 = document.getElementById("progress-bar-1").querySelector(".progress-bar");
+            const progressBar2 = document.getElementById("progress-bar-2").querySelector(".progress-bar");
+
+            // Устанавливаем ширину progress-bar в зависимости от вероятности
+            progressBar1.style.width = (prediction[0].probability * 100) + "%";
+            progressBar1.innerHTML = (prediction[0].probability * 100).toFixed(2) + "%";
+            progressBar2.style.width = (prediction[1].probability * 100) + "%";
+            progressBar2.innerHTML = (prediction[1].probability * 100).toFixed(2) + "%";
+        }
+    </script>
+</body>
+
+</html>
